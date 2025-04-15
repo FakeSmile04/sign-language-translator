@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Live Feature Viewer</title>
+</head>
+<body>
+  <h1 id="main-heading">Live Features from Arduino</h1>
+  <pre id="data-display">Waiting for data...</pre>
+
+  <script>
+    const ws = new WebSocket("ws://" + location.hostname + ":8765");
+
+    ws.onopen = () => console.log("✅ WebSocket connected");
+    ws.onclose = (e) => console.warn("❌ WebSocket closed", e);
+    ws.onerror = (e) => console.error("WebSocket error", e);
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      document.getElementById('data-display').textContent = JSON.stringify(data, null, 2);
+    };
+
+    function speakHeader() {
+      const heading = document.getElementById("main-heading");
+      const text = heading?.innerText?.trim();
+
+      if (text) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = "en-US";
+        utterance.pitch = 1;
+        utterance.rate = 1;
+        speechSynthesis.speak(utterance);
+        console.log("Speaking header:", text);
+      } else {
+        console.warn("No header text found to speak");
+      }
+    }
+
+    // Wait for voices, then speak header
+    window.addEventListener("load", () => {
+      if (speechSynthesis.getVoices().length > 0) {
+        speakHeader();
+      } else {
+        speechSynthesis.onvoiceschanged = speakHeader;
+      }
+    });
+  </script>
+</body>
+</html>
