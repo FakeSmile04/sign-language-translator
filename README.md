@@ -1,6 +1,15 @@
 # sign-language-translator
 AI-based Sign Language Translator Using Electromyography
 
+## Version 0.1.2
+- Added AI prediction model and TTS capability on the Websocket version
+- Recommended to use Chrome to run index.html
+
+Issues and Future Plans:
+- Implement port fowarding so it can be used online (to port 8000)
+- Look into possibility on making the output as close to real-time as possible
+- Test the program with proper EMG sensors once worked
+
 ## Version 0.1.1
 
 - Added another version of the program that doesn't use XAMPP, instead serves the webpage directly from Python due to issues implementing WebSocket in XAMPP environment
