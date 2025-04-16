@@ -1,4 +1,5 @@
 import random
+import joblib
 import serial
 import asyncio
 import websockets
@@ -60,6 +61,17 @@ def start_websocket(loop_holder, ready_event):
     asyncio.set_event_loop(loop)
     loop.run_until_complete(run())
 
+# Load the pre-trained Random Forest model
+model_path = "random_forest_model.pkl"  # Path to your trained model
+try:
+    rf_model = joblib.load(model_path)
+    print("Random Forest model loaded successfully.")
+except FileNotFoundError:
+    print(f"Error: Model file '{model_path}' not found.")
+    exit()
+
+labels = ["peace", "rock", "thumbs"]
+
 # --- Feature Extraction Logic ---
 def feature_extraction(data, queue, loop):
     if not hasattr(feature_extraction, "data_buffer"):
@@ -78,7 +90,7 @@ def feature_extraction(data, queue, loop):
 
         if len(feature_extraction.data_buffer) > 1:
             buffer = np.array(feature_extraction.data_buffer)
-            '''
+            
             features = {
                 "MAV": np.mean(np.abs(buffer)),
                 "RMS": np.sqrt(np.mean(buffer**2)),
@@ -96,10 +108,24 @@ def feature_extraction(data, queue, loop):
                 "VAR": random.randint(0, 100),
                 "IEMG": random.randint(0, 100)
             }
-            print("Features:", features)
-            features = {k: float(v) for k, v in features.items()}
+            '''
+            features_list = list(features.values())
 
-            asyncio.run_coroutine_threadsafe(queue.put(json.dumps(features)), loop)
+            # Print features
+            #print(f"MAV: {mav:.4f}, RMS: {rms:.4f}, ZC: {zc}, WL: {wl:.4f}, VAR: {var:.4f}, IEMG: {iemg:.4f}")
+            # Predict the label using the Random Forest model
+
+            predicted_label = rf_model.predict([features_list])[0]
+
+            # Print the predicted label
+            #print(f"Predicted Label: {predicted_label}")
+            
+            # Create a JSON object with features and predicted label
+            to_send = {
+                "predicted_label": predicted_label
+            }
+
+            asyncio.run_coroutine_threadsafe(queue.put(json.dumps(to_send)), loop)
 
     except ValueError:
         print("Invalid data format.")
