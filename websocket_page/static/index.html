@@ -6,44 +6,94 @@
 </head>
 <body>
   <h1 id="main-heading">Live Features from Arduino</h1>
+  <button onclick="speakHeader()">🔊 Speak Header</button>
   <pre id="data-display">Waiting for data...</pre>
 
   <script>
     const ws = new WebSocket("ws://" + location.hostname + ":8765");
+    let lastSpokenLabel = "";
+    let voicesReady = false;
+    let ttsEnabled = false;
 
+    // Ensure voices are loaded before speaking
+    function ensureVoicesLoaded(callback) {
+      let voices = speechSynthesis.getVoices();
+      if (voices.length !== 0) {
+        voicesReady = true;
+        callback();
+      } else {
+        speechSynthesis.onvoiceschanged = () => {
+          voicesReady = true;
+          callback();
+        };
+      }
+    }
+
+    function speak(text) {
+      if (!voicesReady || !text) {
+        console.warn("TTS skipped: voices not ready or empty text.");
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "en-US";
+      utterance.pitch = 1;
+      utterance.rate = 1;
+      speechSynthesis.cancel(); // Stop current speech
+      speechSynthesis.speak(utterance);
+    }
+
+    // Enable TTS after user interaction
+    function enableTTSOnce() {
+      if (!ttsEnabled) {
+        ttsEnabled = true;
+        console.log("✅ TTS unlocked by user interaction");
+
+        // Optional: confirmation message
+        const utterance = new SpeechSynthesisUtterance("Text to speech is now active.");
+        utterance.lang = "en-US";
+        speechSynthesis.speak(utterance);
+      }
+
+      // Remove listeners after first trigger
+      document.removeEventListener("click", enableTTSOnce);
+      document.removeEventListener("keydown", enableTTSOnce);
+    }
+
+    document.addEventListener("click", enableTTSOnce);
+    document.addEventListener("keydown", enableTTSOnce);
+
+    // WebSocket handlers
     ws.onopen = () => console.log("✅ WebSocket connected");
     ws.onclose = (e) => console.warn("❌ WebSocket closed", e);
     ws.onerror = (e) => console.error("WebSocket error", e);
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      document.getElementById('data-display').textContent = JSON.stringify(data, null, 2);
+      try {
+        const data = JSON.parse(event.data);
+        const predictedLabel = data.predicted_label;
+        document.getElementById('data-display').textContent = `Predicted Label: ${predictedLabel}`;
+
+        if (ttsEnabled && predictedLabel && predictedLabel !== lastSpokenLabel) {
+          ensureVoicesLoaded(() => {
+            speak(predictedLabel);
+            lastSpokenLabel = predictedLabel;
+          });
+        }
+
+      } catch (e) {
+        console.error("Failed to parse WebSocket message:", e);
+      }
     };
 
+    // Manual header TTS
     function speakHeader() {
       const heading = document.getElementById("main-heading");
       const text = heading?.innerText?.trim();
-
       if (text) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = "en-US";
-        utterance.pitch = 1;
-        utterance.rate = 1;
-        speechSynthesis.speak(utterance);
-        console.log("Speaking header:", text);
-      } else {
-        console.warn("No header text found to speak");
+        ensureVoicesLoaded(() => speak(text));
       }
     }
-
-    // Wait for voices, then speak header
-    window.addEventListener("load", () => {
-      if (speechSynthesis.getVoices().length > 0) {
-        speakHeader();
-      } else {
-        speechSynthesis.onvoiceschanged = speakHeader;
-      }
-    });
   </script>
 </body>
 </html>
