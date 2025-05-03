@@ -1,6 +1,21 @@
 # sign-language-translator
 AI-based Sign Language Translator Using Electromyography
 
+## Version 0.2
+- Implemented MQTT as the method of sending data from ESP32 to app.py
+- Removed codes related to serial method
+- Uploaded an updated version of Arduino sketch installed in ESP32 for EMG data collection
+- Added basic stylings for the webpage to make it looks nicer
+- Cleaned out the file strcture of the whole repository
+
+Notes:
+- WiFi credentials are in the sketch and has to be reuploaded to ESP32 each time it is used
+- ESP32 and the PC doesn't need to be in same network in theory, not tried yet
+
+Future Plans:
+- Implement a better ML model for sign prediction
+- Test the program with new sensor circuit setup
+
 ## Version 0.1.2
 - Added AI prediction model and TTS capability on the Websocket version
 - Recommended to use Chrome to run index.html
