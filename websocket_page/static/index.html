@@ -2,44 +2,213 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Live Feature Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EMG Sign Language Translator</title>
+  <style>
+    :root {
+      --primary: #4a6fa5;
+      --secondary: #166088;
+      --accent: #4fc3f7;
+      --text: #333;
+      --bg: #f5f7fa;
+      --card-bg: #fff;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      color: var(--text);
+      background-color: var(--bg);
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    
+    .container {
+      max-width: 800px;
+      width: 100%;
+      background: var(--card-bg);
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      padding: 30px;
+      text-align: center;
+    }
+    
+    h1 {
+      color: var(--secondary);
+      margin-bottom: 30px;
+      font-size: 2rem;
+      font-weight: 600;
+    }
+    
+    .status-card {
+      background: linear-gradient(135deg, #f5f7fa 0%, #e4e8eb 100%);
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+      border-left: 4px solid var(--accent);
+    }
+    
+    #data-display {
+      font-size: 2.5rem;
+      font-weight: bold;
+      color: var(--primary);
+      margin: 20px 0;
+      padding: 20px;
+      background-color: rgba(74, 111, 165, 0.1);
+      border-radius: 8px;
+      min-height: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+    
+    .btn {
+      background-color: var(--primary);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 50px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 10px;
+    }
+    
+    .btn:hover {
+      background-color: var(--secondary);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .btn:active {
+      transform: translateY(0);
+    }
+    
+    .connection-status {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      margin-top: 20px;
+      font-size: 0.9rem;
+    }
+    
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    .indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #ccc;
+    }
+    
+    .indicator.active {
+      background: #4CAF50;
+      box-shadow: 0 0 8px #4CAF50;
+    }
+    
+    footer {
+      margin-top: 40px;
+      font-size: 0.8rem;
+      color: #666;
+      text-align: center;
+    }
+    
+    @media (max-width: 600px) {
+      .container {
+        padding: 20px;
+      }
+      
+      h1 {
+        font-size: 1.5rem;
+      }
+      
+      #data-display {
+        font-size: 2rem;
+        padding: 15px;
+      }
+    }
+  </style>
 </head>
 <body>
-  <h1 id="main-heading">Live Features from Arduino</h1>
-  <button onclick="speakHeader()">🔊 Speak Header</button>
-  <pre id="data-display">Waiting for data...</pre>
+  <div class="container">
+    <h1 id="main-heading">Electromyography Sign Language Translator</h1>
+    
+    <div class="status-card">
+      <div id="data-display">Waiting for EMG data...</div>
+      <button class="btn" onclick="speakHeader()">
+        <span>🔊</span> Speak Title
+      </button>
+    </div>
+    
+    <div class="connection-status">
+      <div class="status-indicator">
+        <div id="ws-indicator" class="indicator"></div>
+        <span>WebSocket</span>
+      </div>
+      <div class="status-indicator">
+        <div id="tts-indicator" class="indicator"></div>
+        <span>TTS Ready</span>
+      </div>
+    </div>
+    
+    <footer>
+      EMG Sign Language Translator System | Real-time Prediction
+    </footer>
+  </div>
 
   <script>
     const ws = new WebSocket("ws://" + location.hostname + ":8765");
     let lastSpokenLabel = "";
     let voicesReady = false;
     let ttsEnabled = false;
+    
+    // UI Elements
+    const wsIndicator = document.getElementById('ws-indicator');
+    const ttsIndicator = document.getElementById('tts-indicator');
+    const dataDisplay = document.getElementById('data-display');
+
+    // Connection indicators
+    function updateConnectionStatus() {
+      wsIndicator.classList.toggle('active', ws.readyState === WebSocket.OPEN);
+      ttsIndicator.classList.toggle('active', voicesReady && ttsEnabled);
+    }
 
     // Ensure voices are loaded before speaking
     function ensureVoicesLoaded(callback) {
       let voices = speechSynthesis.getVoices();
       if (voices.length !== 0) {
         voicesReady = true;
+        updateConnectionStatus();
         callback();
       } else {
         speechSynthesis.onvoiceschanged = () => {
           voicesReady = true;
+          updateConnectionStatus();
           callback();
         };
       }
     }
 
     function speak(text) {
-      if (!voicesReady || !text) {
-        console.warn("TTS skipped: voices not ready or empty text.");
-        return;
-      }
-
+      if (!voicesReady || !text) return;
+      
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = "en-US";
       utterance.pitch = 1;
       utterance.rate = 1;
-      speechSynthesis.cancel(); // Stop current speech
+      speechSynthesis.cancel();
       speechSynthesis.speak(utterance);
     }
 
@@ -47,15 +216,9 @@
     function enableTTSOnce() {
       if (!ttsEnabled) {
         ttsEnabled = true;
-        console.log("✅ TTS unlocked by user interaction");
-
-        // Optional: confirmation message
-        const utterance = new SpeechSynthesisUtterance("Text to speech is now active.");
-        utterance.lang = "en-US";
-        speechSynthesis.speak(utterance);
+        updateConnectionStatus();
+        speak("Text to speech is now active.");
       }
-
-      // Remove listeners after first trigger
       document.removeEventListener("click", enableTTSOnce);
       document.removeEventListener("keydown", enableTTSOnce);
     }
@@ -64,15 +227,32 @@
     document.addEventListener("keydown", enableTTSOnce);
 
     // WebSocket handlers
-    ws.onopen = () => console.log("✅ WebSocket connected");
-    ws.onclose = (e) => console.warn("❌ WebSocket closed", e);
-    ws.onerror = (e) => console.error("WebSocket error", e);
+    ws.onopen = () => {
+      console.log("✅ WebSocket connected");
+      updateConnectionStatus();
+    };
+    
+    ws.onclose = (e) => {
+      console.warn("❌ WebSocket closed", e);
+      updateConnectionStatus();
+    };
+    
+    ws.onerror = (e) => {
+      console.error("WebSocket error", e);
+      updateConnectionStatus();
+    };
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         const predictedLabel = data.predicted_label;
-        document.getElementById('data-display').textContent = `Predicted Label: ${predictedLabel}`;
+        
+        // Update display with animation
+        dataDisplay.textContent = predictedLabel;
+        dataDisplay.style.transform = 'scale(1.05)';
+        setTimeout(() => {
+          dataDisplay.style.transform = 'scale(1)';
+        }, 300);
 
         if (ttsEnabled && predictedLabel && predictedLabel !== lastSpokenLabel) {
           ensureVoicesLoaded(() => {
@@ -90,10 +270,11 @@
     function speakHeader() {
       const heading = document.getElementById("main-heading");
       const text = heading?.innerText?.trim();
-      if (text) {
-        ensureVoicesLoaded(() => speak(text));
-      }
+      if (text) ensureVoicesLoaded(() => speak(text));
     }
+    
+    // Initial status update
+    updateConnectionStatus();
   </script>
 </body>
 </html>

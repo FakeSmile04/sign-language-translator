@@ -1,6 +1,5 @@
 import random
 import joblib
-import serial
 import asyncio
 import websockets
 from aiohttp import web
@@ -8,27 +7,44 @@ import time
 import numpy as np
 import json
 import threading
+import paho.mqtt.client as mqtt
+import os
 
 # Settings
 PORT = 8000
 WS_PORT = 8765
-SERIAL_PORT = 'COM9'
-BAUD_RATE = 115200
+MQTT_BROKER = "broker.hivemq.com" # Replace with your MQTT broker address
+MQTT_TOPIC = "esp32/emg"  # Replace with your MQTT topic
 
 connected_clients = set()
 data_queue = asyncio.Queue()
 
 # --- Serve index.html from /static ---
 async def index(request):
+    print("Serving index.html")  # Debug
     return web.FileResponse('./static/index.html')
 
+# In app.py, modify the start_http_server function:
 def start_http_server():
     app = web.Application()
-    app.router.add_get('/', index)
-    app.router.add_static('/static/', path='static', name='static')
+    
+    # Get absolute path to static folder
+    import os
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    static_path = os.path.join(current_dir, 'static')
+    
+    # Verify index.html exists
+    if not os.path.exists(os.path.join(static_path, 'index.html')):
+        print(f"Error: index.html not found at {static_path}")
+        exit(1)
+    
+    app.router.add_get('/', lambda r: web.FileResponse(os.path.join(static_path, 'index.html')))
+    app.router.add_static('/static/', path=static_path)
+    
+    print(f"Serving from {static_path}")
     web.run_app(app, port=PORT)
 
-# --- WebSocket Handler (v11+ style) ---
+# --- WebSocket Handler ---
 async def ws_handler(websocket):
     connected_clients.add(websocket)
     print("Client connected")
@@ -61,8 +77,34 @@ def start_websocket(loop_holder, ready_event):
     asyncio.set_event_loop(loop)
     loop.run_until_complete(run())
 
+# --- MQTT Callbacks ---
+def on_connect(client, userdata, flags, reason_code, properties):  # Updated for v2
+    if reason_code == 0:
+        print("Connected to MQTT Broker!")
+        client.subscribe(MQTT_TOPIC)
+    else:
+        print(f"Failed to connect, reason code: {reason_code}")
+
+def on_message(client, userdata, msg):
+    try:
+        # First, clean the payload by removing null bytes
+        clean_payload = msg.payload.decode('utf-8').split('\x00')[0]
+        
+        if clean_payload:  # Only process if we got actual data
+            try:
+                data = json.loads(clean_payload)
+                value = data["value"]
+                feature_extraction(str(value), data_queue, userdata['loop'])
+                #print(f"Received JSON data.")
+            except json.JSONDecodeError:
+                print(f"Received non-JSON data: {clean_payload}")
+            except KeyError:
+                print(f"JSON missing 'value' key: {clean_payload}")
+    except Exception as e:
+        print(f"Error processing message: {e}")
+
 # Load the pre-trained Random Forest model
-model_path = "random_forest_model.pkl"  # Path to your trained model
+model_path = os.path.join(os.path.dirname(__file__), "random_forest_model.pkl")
 try:
     rf_model = joblib.load(model_path)
     print("Random Forest model loaded successfully.")
@@ -99,28 +141,10 @@ def feature_extraction(data, queue, loop):
                 "VAR": float(np.var(buffer)),
                 "IEMG": float(np.sum(np.abs(buffer)))
             }
-            '''
-            features = {
-                "MAV": random.randint(0, 100),
-                "RMS": random.randint(0, 100),
-                "ZC": random.randint(0, 100),
-                "WL": random.randint(0, 100),
-                "VAR": random.randint(0, 100),
-                "IEMG": random.randint(0, 100)
-            }
-            '''
+
             features_list = list(features.values())
-
-            # Print features
-            #print(f"MAV: {mav:.4f}, RMS: {rms:.4f}, ZC: {zc}, WL: {wl:.4f}, VAR: {var:.4f}, IEMG: {iemg:.4f}")
-            # Predict the label using the Random Forest model
-
             predicted_label = rf_model.predict([features_list])[0]
-
-            # Print the predicted label
-            #print(f"Predicted Label: {predicted_label}")
             
-            # Create a JSON object with features and predicted label
             to_send = {
                 "predicted_label": predicted_label
             }
@@ -130,31 +154,25 @@ def feature_extraction(data, queue, loop):
     except ValueError:
         print("Invalid data format.")
 
-# --- Arduino Serial Reader ---
-def read_serial(queue, loop):
+# --- Start MQTT Client ---
+def start_mqtt_client(loop):
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+    client.user_data_set({'loop': loop})
+    client.on_connect = on_connect
+    client.on_message = on_message
+    
     try:
-        ser = serial.Serial(SERIAL_PORT, BAUD_RATE)
-        print(f"Connected to Arduino on {SERIAL_PORT}")
-        while True:
-            if ser.in_waiting > 0:
-                incoming = ser.readline().decode('utf-8').strip()
-                try:
-                    _, value_str = incoming.split(",")
-                    feature_extraction(value_str, queue, loop)
-                except Exception:
-                    print("Invalid serial format")
-    except serial.SerialException as e:
-        print(f"Serial error: {e}")
-    finally:
-        if 'ser' in locals() and ser.is_open:
-            ser.close()
+        client.connect(MQTT_BROKER, 1883, 60)
+        client.loop_forever()
+    except Exception as e:
+        print(f"MQTT connection error: {e}")
 
 # --- Boot Everything ---
 if __name__ == "__main__":
     # Start the web server
     threading.Thread(target=start_http_server, daemon=True).start()
 
-    # Start WebSocket server and share event loop with serial reader
+    # Start WebSocket server and share event loop with MQTT client
     loop_ready = threading.Event()
     loop_holder = {}
     threading.Thread(target=start_websocket, args=(loop_holder, loop_ready), daemon=True).start()
@@ -162,5 +180,5 @@ if __name__ == "__main__":
     loop_ready.wait()  # Wait until WebSocket loop is ready
     websocket_loop = loop_holder['loop']
 
-    # Start reading Arduino serial data
-    read_serial(data_queue, websocket_loop)
+    # Start MQTT client
+    start_mqtt_client(websocket_loop)
