@@ -1,6 +1,16 @@
 # sign-language-translator
 AI-based Sign Language Translator Using Electromyography
 
+## Version 0.5
+- Now uses Mosquitto as the MQTT broker (Mosquitto is required to run the program)
+- Uploaded latest version of the Arduino Sketch that now has config mode using simple webpage in AP
+- Uploaded Flutter Project Directory pertaining to mobile interface
+- Uploaded stable release .apk file of the mobile interface for Android phones
+
+Notes:
+- Python backend isn't finalised yet
+- PCB sketch project files and other related files aren't uploaded yet
+
 ## Version 0.2
 - Implemented MQTT as the method of sending data from ESP32 to app.py
 - Removed codes related to serial method
