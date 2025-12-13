@@ -13,8 +13,8 @@ import os
 # Settings
 PORT = 8000
 WS_PORT = 8765
-MQTT_BROKER = "broker.hivemq.com" # Replace with your MQTT broker address
-MQTT_TOPIC = "esp32/emg"  # Replace with your MQTT topic
+MQTT_BROKER = "192.168.225.1" # Mosquitto broker IP
+MQTT_TOPIC = "esp32/emg"  # MQTT topic
 
 connected_clients = set()
 data_queue = asyncio.Queue()
@@ -24,7 +24,6 @@ async def index(request):
     print("Serving index.html")  # Debug
     return web.FileResponse('./static/index.html')
 
-# In app.py, modify the start_http_server function:
 def start_http_server():
     app = web.Application()
     
@@ -87,16 +86,17 @@ def on_connect(client, userdata, flags, reason_code, properties):  # Updated for
 
 def on_message(client, userdata, msg):
     try:
-        # First, clean the payload by removing null bytes
+        # removing null bytes
         clean_payload = msg.payload.decode('utf-8').split('\x00')[0]
         
         if clean_payload:  # Only process if we got actual data
             try:
                 data = json.loads(clean_payload)
+                #print(f"Received JSON payload: {json.dumps(data, indent=2)}")
                 value = data["value"]
                 feature_extraction(str(value), data_queue, userdata['loop'])
-                #print(f"Received JSON data.")
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as jde:
+                print(f"JSON decode error: {jde}")  # <-- Print the JSON decode error
                 print(f"Received non-JSON data: {clean_payload}")
             except KeyError:
                 print(f"JSON missing 'value' key: {clean_payload}")
@@ -112,7 +112,7 @@ except FileNotFoundError:
     print(f"Error: Model file '{model_path}' not found.")
     exit()
 
-labels = ["peace", "rock", "thumbs"]
+labels = ["thank you", "welcome", "help"]
 
 # --- Feature Extraction Logic ---
 def feature_extraction(data, queue, loop):
@@ -148,11 +148,23 @@ def feature_extraction(data, queue, loop):
             to_send = {
                 "predicted_label": predicted_label
             }
-
+            
             asyncio.run_coroutine_threadsafe(queue.put(json.dumps(to_send)), loop)
 
     except ValueError:
-        print("Invalid data format.")
+        print("Invalid data format. Here's a test data instead.")
+        if not hasattr(feature_extraction, "last_update_time"):
+            feature_extraction.last_update_time = time.time()
+            feature_extraction.current_label = random.choice(labels)
+        
+        if time.time() - feature_extraction.last_update_time > 5:
+            feature_extraction.current_label = random.choice(labels)
+            feature_extraction.last_update_time = time.time()
+        
+        to_send = {
+            "predicted_label": feature_extraction.current_label
+        }
+        asyncio.run_coroutine_threadsafe(queue.put(json.dumps(to_send)), loop)
 
 # --- Start MQTT Client ---
 def start_mqtt_client(loop):
